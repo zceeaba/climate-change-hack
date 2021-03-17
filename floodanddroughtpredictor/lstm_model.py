@@ -148,15 +148,18 @@ def run_univariate_lstm(data):
         model.add(LSTM(200, activation = 'relu', input_shape = (n_features, n_timesteps)))
         model.add(Dense(100, activation = 'relu'))
         model.add(Dense(n_outputs))
-        model.compile(loss = 'mse', optimizer = keras.optimizers.Adam(learning_rate = learning_rate))
+        model.compile(loss = 'mse',
+                      optimizer = keras.optimizers.Adam(learning_rate = learning_rate))
         model.summary()
 
         # fit network
-        history = model.fit(train_x, train_y
-                            , epochs = epochs
-                            , batch_size = batch_size
-                            , verbose = verbose
-                            , validation_data = (val_x, val_y))
+        history = model.fit(
+            train_x, train_y
+            , epochs = epochs
+            , batch_size = batch_size
+            , verbose = verbose
+            , validation_data = (val_x, val_y)
+        )
 
         visualize_loss(history, "Training and Validation Loss", id)
 
@@ -166,7 +169,8 @@ def run_univariate_lstm(data):
         actuals = val_y
         preds = np.asarray(forecasts, dtype = np.float32)
 
-        actuals_1, actuals_2, actuals_3 = Extract(actuals, 0), Extract(actuals, 1), Extract(actuals, 2)
+        actuals_1, actuals_2, actuals_3 = Extract(actuals, 0), Extract(actuals, 1), Extract(actuals,
+                                                                                            2)
         preds_1, preds_2, preds_3 = Extract(preds, 0), Extract(preds, 1), Extract(preds, 2)
 
         # Comparing the forecasts with the actual values
@@ -175,13 +179,13 @@ def run_univariate_lstm(data):
         months = out['time'].values[-len(actuals):]
 
         df1 = pd.DataFrame({
-                               'time': months, 'original (t+1)': actuals_1, 'original (t+2)': actuals_2,
-                               'original (t+3)': actuals_3
-                           })
+            'time': months, 'original (t+1)': actuals_1, 'original (t+2)': actuals_2,
+            'original (t+3)': actuals_3
+        })
         df2 = pd.DataFrame({
-                               'time': months, 'forecast (t+1)': preds_1, 'forecast (t+2)': preds_2,
-                               'forecast (t+3)': preds_3
-                           })
+            'time': months, 'forecast (t+1)': preds_1, 'forecast (t+2)': preds_2,
+            'forecast (t+3)': preds_3
+        })
 
         frame = pd.merge(df1, df2, on = "time")
         frame['id'] = id
