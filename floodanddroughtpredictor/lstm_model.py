@@ -1,6 +1,7 @@
 # univariate multi-step lstm
-
 import matplotlib.pyplot as plt
+import math
+import geopandas as gpd
 import pandas as pd
 import numpy as np
 from sklearn.metrics import mean_squared_error
@@ -9,6 +10,9 @@ from keras.layers import Dense
 from keras.layers import LSTM
 import keras
 from shapely.geometry import Point
+import os
+
+from floodanddroughtpredictor.utils.path_utils import get_project_root
 
 
 # normalise the data
@@ -63,7 +67,7 @@ def visualize_loss(history, title, filename):
     plt.ylabel("Loss")
     plt.legend()
     plt.show()
-    plt.savefig('data/loss/' + str(filename) + '.png')
+    plt.savefig(os.path.join(get_project_root(), 'data/loss/') + str(filename) + '.png')
 
 
 # make one forecast with an LSTM,
@@ -97,104 +101,98 @@ def evaluate_forecasts(test, forecasts, n_lag, n_seq):
     for i in range(n_seq):
         actual = [row[i] for row in test]
         predicted = [forecast[i] for forecast in forecasts]
-        rmse = sqrt(mean_squared_error(actual, predicted))
+        rmse = math.sqrt(mean_squared_error(actual, predicted))
         print('t+%d RMSE: %f' % ((i + 1), rmse))
 
 
-# load the new file and subset so that we only have a single point
-dataset = pd.read_csv('/Users/henrietta.ridley/climate_data/data/spei01_niger.csv', header = 0,
-                      infer_datetime_format = True, parse_dates = ['time'], index_col = ['time'])
-dataset['id'] = dataset['lon'] + dataset['lat']
-dataset_notnull = dataset.dropna()
+def run_univariate_lstm(data):
+    # load the new file and subset so that we only have a single point
+    dataset = pd.read_csv(
+        data, header = 0, infer_datetime_format = True, parse_dates = ['time'], index_col = ['time']
+    )
+    dataset['id'] = dataset['lon'] + dataset['lat']
+    dataset_notnull = dataset.dropna()
 
-test = dataset_notnull.id.unique()[:25]
+    test = dataset_notnull.id.unique()[:25]
 
-output = pd.DataFrame()
-for id in test:
-    dataset_subset = dataset_notnull.loc[dataset_notnull['id'] == id]
-    dataset_subset = dataset_subset['spei']
+    output = pd.DataFrame()
+    for id in test:
+        dataset_subset = dataset_notnull.loc[dataset_notnull['id'] == id]
+        dataset_subset = dataset_subset['spei']
 
-    # split into train and test
-    split_fraction = 0.715
-    train_split = int(split_fraction * int(dataset_subset.shape[0]))
+        # split into train and test
+        split_fraction = 0.715
+        train_split = int(split_fraction * int(dataset_subset.shape[0]))
 
-    # Normalise the data
-    spei = normalize(dataset_subset.values, train_split)
-    data = pd.DataFrame(spei)
-    data.head()
+        # Normalise the data
+        spei = normalize(dataset_subset.values, train_split)
+        data = pd.DataFrame(spei)
+        data.head()
 
-    train_data = data.loc[0: train_split - 1]
-    val_data = data.loc[train_split:]
+        train_data = data.loc[0: train_split - 1]
+        val_data = data.loc[train_split:]
 
-    # Convert time series to supervised problem
-    n_input = 12  # how many records back are we looking at to create each prediction
-    n_out = 3  # how many time steps forward do we want to predict for
+        # Convert time series to supervised problem
+        n_input = 12  # how many records back are we looking at to create each prediction
+        n_out = 3  # how many time steps forward do we want to predict for
 
-    train_x, train_y, train = create_x_y(train_data, n_input, n_out)
-    val_x, val_y, val = create_x_y(val_data, n_input, n_out)
+        train_x, train_y, train = create_x_y(train_data, n_input, n_out)
+        val_x, val_y, val = create_x_y(val_data, n_input, n_out)
 
-    # define parameters
-    verbose, epochs, batch_size, learning_rate = 1, 100, 20, 0.0001
-    n_features, n_timesteps, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
+        # define parameters
+        verbose, epochs, batch_size, learning_rate = 1, 100, 20, 0.0001
+        n_features, n_timesteps, n_outputs = train_x.shape[1], train_x.shape[2], train_y.shape[1]
 
-    # define model
-    model = Sequential()
-    model.add(LSTM(200, activation = 'relu', input_shape = (n_features, n_timesteps)))
-    model.add(Dense(100, activation = 'relu'))
-    model.add(Dense(n_outputs))
-    model.compile(loss = 'mse', optimizer = keras.optimizers.Adam(learning_rate = learning_rate))
-    model.summary()
+        # define model
+        model = Sequential()
+        model.add(LSTM(200, activation = 'relu', input_shape = (n_features, n_timesteps)))
+        model.add(Dense(100, activation = 'relu'))
+        model.add(Dense(n_outputs))
+        model.compile(loss = 'mse', optimizer = keras.optimizers.Adam(learning_rate = learning_rate))
+        model.summary()
 
-    # fit network
-    # model.fit(train_x, train_y, epochs=epochs, batch_size=batch_size, verbose=verbose)
-    history = model.fit(train_x, train_y
-                        , epochs = epochs
-                        , batch_size = batch_size
-                        , verbose = verbose
-                        , validation_data = (val_x, val_y))
+        # fit network
+        history = model.fit(train_x, train_y
+                            , epochs = epochs
+                            , batch_size = batch_size
+                            , verbose = verbose
+                            , validation_data = (val_x, val_y))
 
-    visualize_loss(history, "Training and Validation Loss", id)
+        visualize_loss(history, "Training and Validation Loss", id)
 
-    # make forecasts
-    forecasts = make_forecasts(model, batch_size, train, val, n_timesteps, n_outputs)
+        # make forecasts
+        forecasts = make_forecasts(model, batch_size, train, val, n_timesteps, n_outputs)
 
-    actuals = val_y
-    preds = np.asarray(forecasts, dtype = np.float32)
+        actuals = val_y
+        preds = np.asarray(forecasts, dtype = np.float32)
 
-    actuals_1, actuals_2, actuals_3 = Extract(actuals, 0), Extract(actuals, 1), Extract(actuals, 2)
-    preds_1, preds_2, preds_3 = Extract(preds, 0), Extract(preds, 1), Extract(preds, 2)
+        actuals_1, actuals_2, actuals_3 = Extract(actuals, 0), Extract(actuals, 1), Extract(actuals, 2)
+        preds_1, preds_2, preds_3 = Extract(preds, 0), Extract(preds, 1), Extract(preds, 2)
 
-    # Comparing the forecasts with the actual values
-    # Creating the frame to store both predictions
-    out = dataset_subset.reset_index()
-    months = out['time'].values[-len(actuals):]
-    # frame = pd.concat([
-    #  pd.DataFrame({'time': months, '(t+1)':actuals_1, '(t+2)':actuals_2, '(t+3)':actuals_3, 'type': 'original'}),
-    #  pd.DataFrame({'time': months, '(t+1)':preds_1, '(t+2)':preds_2, '(t+2)':preds_3, 'type': 'forecast'})])
+        # Comparing the forecasts with the actual values
+        # Creating the frame to store both predictions
+        out = dataset_subset.reset_index()
+        months = out['time'].values[-len(actuals):]
 
-    df1 = pd.DataFrame({
-                           'time': months, 'original (t+1)': actuals_1, 'original (t+2)': actuals_2,
-                           'original (t+3)': actuals_3
-                       })
-    df2 = pd.DataFrame({
-                           'time': months, 'forecast (t+1)': preds_1, 'forecast (t+2)': preds_2,
-                           'forecast (t+2)': preds_3
-                       })
+        df1 = pd.DataFrame({
+                               'time': months, 'original (t+1)': actuals_1, 'original (t+2)': actuals_2,
+                               'original (t+3)': actuals_3
+                           })
+        df2 = pd.DataFrame({
+                               'time': months, 'forecast (t+1)': preds_1, 'forecast (t+2)': preds_2,
+                               'forecast (t+3)': preds_3
+                           })
 
-    frame = pd.merge(df1, df2, on = "time")
-    frame['id'] = id
-    output = output.append(frame)
+        frame = pd.merge(df1, df2, on = "time")
+        frame['id'] = id
+        output = output.append(frame)
 
-# Join the forecasting data onto the geo dataframe
-output_df = pd.merge(dataset_notnull, output, how = 'inner', on = ('time', 'id'))
-output_df.columns
+    # Join the forecasting data onto the geo dataframe
+    output_df = pd.merge(dataset_notnull, output, how = 'inner', on = ('time', 'id'))
 
-# Attach and save this down as an
-import geopandas as gpd
-import pandas as pd
+    geom = [Point(x, y) for x, y in zip(output_df['lon'], output_df['lat'])]
+    niger_drought = gpd.GeoDataFrame(output_df, geometry = geom)
 
-geom = [Point(x, y) for x, y in zip(output_df['lon'], output_df['lat'])]
-niger_drought = gpd.GeoDataFrame(output_df, geometry = geom)
-
-niger_drought.to_file(
-    "/Users/henrietta.ridley/climate_data/data/niger_drought_preds/niger_drought.shp")
+    niger_drought.to_file(
+        os.path.join(get_project_root(), "data/niger_drought_preds/niger_drought.shp")
+    )
