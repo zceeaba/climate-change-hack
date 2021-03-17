@@ -17,7 +17,7 @@ def extract_drough_data():
 
     # Read in GeoData for Niger
     niger_admin = gpd.read_file(
-        r"/Users/henrietta.ridley/climate_data/data/ner_adm03_feb2018/NER_adm03_feb2018.shp")
+        r"data/ner_adm03_feb2018/NER_adm03_feb2018.shp")
     niger_bound_coordinates = niger_admin['geometry']
     minx = niger_bound_coordinates.bounds.minx.min()
     miny = niger_bound_coordinates.bounds.miny.min()
@@ -37,7 +37,7 @@ def extract_drough_data():
     df_niger.time = pd.to_datetime(df_niger["time"]).dt.strftime('%Y-%m-%d')
     # idx = np.where((df_niger.time >= '2000-01-01'))
     # df_niger = df_niger.loc[idx]
-    df_niger.to_csv('/Users/henrietta.ridley/climate_data/data/spei01_niger.csv')
+    df_niger.to_csv('data/spei01_niger.csv')
 
     geom = [Point(x, y) for x, y in zip(df_niger['lon'], df_niger['lat'])]
     niger_drought = gpd.GeoDataFrame(df_niger, geometry = geom)
